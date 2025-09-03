@@ -91,11 +91,18 @@ jobs:
     - name: Create module package
       run: |
         # Create tarball with module files in root directory
+        # Use --warning=no-file-changed to suppress warnings about files changing during read
         tar --exclude='.git' \
             --exclude='.github' \
             --exclude='*.tar.gz' \
+            --exclude='*.tgz' \
             --exclude='.terraform' \
+            --exclude='.terraform.lock.hcl' \
             --exclude='.env*' \
+            --exclude='.DS_Store' \
+            --exclude='Thumbs.db' \
+            --exclude='module.tar.gz' \
+            --warning=no-file-changed \
             -zcf module.tar.gz .
         
         # Verify archive contents
