@@ -50,3 +50,9 @@ out/
 # Cache directories
 .cache/
 node_modules/
+
+# Claude Code
+.claude/
+
+# Pre-commit
+.pre-commit-cache/

@@ -82,6 +82,28 @@ jobs:
         echo "Provider: $PROVIDER" 
         echo "Version: $VERSION"
         
+    - name: Install terraform-docs
+      uses: jaxxstorm/action-install-gh-release@v1.12.0
+      with:
+        repo: terraform-docs/terraform-docs
+        tag: v0.20.0
+        
+    - name: Generate documentation
+      run: |
+        terraform-docs .
+        
+    - name: Check for documentation changes
+      run: |
+        if ! git diff --exit-code README.md; then
+          echo "README.md was updated with new documentation"
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add README.md
+          git commit -m "Update module documentation"
+        else
+          echo "No documentation changes detected"
+        fi
+        
     - name: Validate Terraform configuration
       run: |
         terraform fmt -check -recursive .
@@ -213,5 +235,4 @@ jobs:
     - name: Clean up
       if: always()
       run: |
-        rm -f artifacts/module.tar.gz
         rm -Rf artifacts
