@@ -92,6 +92,7 @@ jobs:
       run: |
         # Create tarball with module files in root directory
         # Use --warning=no-file-changed to suppress warnings about files changing during read
+        mkdir artifacts
         tar --exclude='.git' \
             --exclude='.github' \
             --exclude='*.tar.gz' \
@@ -101,8 +102,8 @@ jobs:
             --exclude='.env*' \
             --exclude='.DS_Store' \
             --exclude='Thumbs.db' \
-            --exclude='module.tar.gz' \
-            -zcf module.tar.gz .
+            --exclude=./artifacts \
+            -zcf artifacts/module.tar.gz .
         
          
     - name: Create module in private registry
@@ -198,7 +199,7 @@ jobs:
         UPLOAD_RESPONSE=$(curl -s \
           --request PUT \
           --header "Content-Type: application/octet-stream" \
-          --data-binary @module.tar.gz \
+          --data-binary @artifacts/module.tar.gz \
           "$UPLOAD_URL")
         
         if [ $? -eq 0 ]; then
@@ -212,4 +213,5 @@ jobs:
     - name: Clean up
       if: always()
       run: |
-        rm -f module.tar.gz
+        rm -f artifacts/module.tar.gz
+        rm -Rf artifacts
