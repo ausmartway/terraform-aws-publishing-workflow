@@ -102,7 +102,6 @@ jobs:
             --exclude='.DS_Store' \
             --exclude='Thumbs.db' \
             --exclude='module.tar.gz' \
-            --warning=no-file-changed \
             -zcf module.tar.gz .
         
          
