@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:developer.hashicorp.com)",
+      "Bash(chmod:*)",
+      "Bash(markdownlint-cli2:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

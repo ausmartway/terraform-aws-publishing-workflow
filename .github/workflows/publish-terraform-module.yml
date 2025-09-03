@@ -1,0 +1,212 @@
+name: Publish Terraform Module to Private Registry
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+      - '*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Module version to publish'
+        required: true
+        type: string
+      force_publish:
+        description: 'Force publish even if version exists'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  TFC_TOKEN: ${{ secrets.TFC_TOKEN }}
+  TFC_ORGANIZATION: ${{ secrets.TFC_ORGANIZATION }}
+
+jobs:
+  validate-and-publish:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: "~1.0"
+        
+    - name: Validate required secrets
+      run: |
+        if [ -z "$TFC_TOKEN" ]; then
+          echo "Error: TFC_TOKEN secret is not set"
+          exit 1
+        fi
+        if [ -z "$TFC_ORGANIZATION" ]; then
+          echo "Error: TFC_ORGANIZATION secret is not set"
+          exit 1
+        fi
+        
+    - name: Extract module information
+      id: module_info
+      run: |
+        # Extract version from tag or manual input
+        if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+          VERSION="${{ github.event.inputs.version }}"
+        else
+          VERSION=${GITHUB_REF#refs/tags/}
+          VERSION=${VERSION#v}  # Remove 'v' prefix if present
+        fi
+        
+        # Validate semantic versioning
+        if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'; then
+          echo "Error: Version '$VERSION' is not a valid semantic version"
+          exit 1
+        fi
+        
+        # Extract module info from repository name (terraform-<PROVIDER>-<NAME>)
+        REPO_NAME=$(echo "${{ github.repository }}" | cut -d'/' -f2)
+        
+        if ! echo "$REPO_NAME" | grep -qE '^terraform-[a-z0-9_]+-[a-z0-9_-]+$'; then
+          echo "Error: Repository name '$REPO_NAME' does not follow terraform-<PROVIDER>-<NAME> convention"
+          exit 1
+        fi
+        
+        PROVIDER=$(echo "$REPO_NAME" | cut -d'-' -f2)
+        MODULE_NAME=$(echo "$REPO_NAME" | cut -d'-' -f3-)
+        
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "provider=$PROVIDER" >> $GITHUB_OUTPUT
+        echo "module_name=$MODULE_NAME" >> $GITHUB_OUTPUT
+        echo "repo_name=$REPO_NAME" >> $GITHUB_OUTPUT
+        
+        echo "Module: $MODULE_NAME"
+        echo "Provider: $PROVIDER" 
+        echo "Version: $VERSION"
+        
+    - name: Validate Terraform configuration
+      run: |
+        terraform fmt -check -recursive .
+        terraform init -backend=false
+        terraform validate
+        
+    - name: Create module package
+      run: |
+        # Create tarball with module files in root directory
+        tar --exclude='.git' \
+            --exclude='.github' \
+            --exclude='*.tar.gz' \
+            --exclude='.terraform' \
+            --exclude='.env*' \
+            -zcf module.tar.gz .
+        
+        # Verify archive contents
+        echo "Archive contents:"
+        tar -tzf module.tar.gz | head -20
+        
+    - name: Create module in private registry
+      id: create_module
+      run: |
+        MODULE_EXISTS=$(curl -s \
+          --header "Authorization: Bearer $TFC_TOKEN" \
+          --header "Content-Type: application/vnd.api+json" \
+          --request GET \
+          "https://app.terraform.io/api/v2/organizations/$TFC_ORGANIZATION/registry-modules/private/$TFC_ORGANIZATION/${{ steps.module_info.outputs.module_name }}/${{ steps.module_info.outputs.provider }}" \
+          | jq -r '.data.id // empty')
+        
+        if [ -z "$MODULE_EXISTS" ]; then
+          echo "Creating new module in private registry..."
+          
+          RESPONSE=$(curl -s \
+            --header "Authorization: Bearer $TFC_TOKEN" \
+            --header "Content-Type: application/vnd.api+json" \
+            --request POST \
+            --data @- \
+            "https://app.terraform.io/api/v2/organizations/$TFC_ORGANIZATION/registry-modules" <<EOF
+        {
+          "data": {
+            "type": "registry-modules",
+            "attributes": {
+              "name": "${{ steps.module_info.outputs.module_name }}",
+              "provider": "${{ steps.module_info.outputs.provider }}",
+              "registry-name": "private"
+            }
+          }
+        }
+        EOF
+          )
+          
+          if echo "$RESPONSE" | jq -e '.errors' > /dev/null; then
+            echo "Error creating module:"
+            echo "$RESPONSE" | jq '.errors'
+            exit 1
+          fi
+          
+          echo "Module created successfully"
+        else
+          echo "Module already exists in registry"
+        fi
+        
+    - name: Create module version and upload
+      run: |
+        # Create version
+        echo "Creating module version ${{ steps.module_info.outputs.version }}..."
+        
+        VERSION_RESPONSE=$(curl -s \
+          --header "Authorization: Bearer $TFC_TOKEN" \
+          --header "Content-Type: application/vnd.api+json" \
+          --request POST \
+          --data @- \
+          "https://app.terraform.io/api/v2/organizations/$TFC_ORGANIZATION/registry-modules/private/$TFC_ORGANIZATION/${{ steps.module_info.outputs.module_name }}/${{ steps.module_info.outputs.provider }}/versions" <<EOF
+        {
+          "data": {
+            "type": "registry-module-versions",
+            "attributes": {
+              "version": "${{ steps.module_info.outputs.version }}"
+            }
+          }
+        }
+        EOF
+        )
+        
+        if echo "$VERSION_RESPONSE" | jq -e '.errors' > /dev/null; then
+          ERRORS=$(echo "$VERSION_RESPONSE" | jq -r '.errors[].detail')
+          if echo "$ERRORS" | grep -q "already exists" && [ "${{ github.event.inputs.force_publish }}" != "true" ]; then
+            echo "Version ${{ steps.module_info.outputs.version }} already exists. Use force_publish to overwrite."
+            exit 1
+          elif echo "$ERRORS" | grep -q "already exists"; then
+            echo "Warning: Version exists but force_publish is enabled"
+          else
+            echo "Error creating version:"
+            echo "$VERSION_RESPONSE" | jq '.errors'
+            exit 1
+          fi
+        fi
+        
+        # Extract upload URL
+        UPLOAD_URL=$(echo "$VERSION_RESPONSE" | jq -r '.data.links.upload')
+        
+        if [ "$UPLOAD_URL" == "null" ] || [ -z "$UPLOAD_URL" ]; then
+          echo "Error: No upload URL received"
+          exit 1
+        fi
+        
+        # Upload module archive
+        echo "Uploading module archive..."
+        
+        UPLOAD_RESPONSE=$(curl -s \
+          --request PUT \
+          --header "Content-Type: application/octet-stream" \
+          --data-binary @module.tar.gz \
+          "$UPLOAD_URL")
+        
+        if [ $? -eq 0 ]; then
+          echo "Module version ${{ steps.module_info.outputs.version }} published successfully!"
+          echo "Module URL: https://app.terraform.io/app/$TFC_ORGANIZATION/registry/modules/private/$TFC_ORGANIZATION/${{ steps.module_info.outputs.module_name }}/${{ steps.module_info.outputs.provider }}/${{ steps.module_info.outputs.version }}"
+        else
+          echo "Error uploading module archive"
+          exit 1
+        fi
+        
+    - name: Clean up
+      if: always()
+      run: |
+        rm -f module.tar.gz

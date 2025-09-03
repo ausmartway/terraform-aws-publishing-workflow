@@ -1,0 +1,52 @@
+# Terraform files
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+.terraform/
+.terraform.lock.hcl
+crash.log
+crash.*.log
+
+# Module packaging
+*.tar.gz
+*.tgz
+module.tar.gz
+
+# Environment and credentials
+.env
+.env.local
+.env.production
+.env.staging
+.env.test
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Temporary files
+tmp/
+temp/
+.tmp/
+.temp/
+
+# Build artifacts
+dist/
+build/
+out/
+
+# Cache directories
+.cache/
+node_modules/
