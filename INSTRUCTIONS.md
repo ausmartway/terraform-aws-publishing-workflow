@@ -1,7 +1,24 @@
 # Terraform Cloud Private Module Registry Publishing Workflow
 
+🚀 **This is a GitHub template repository!** Click "Use this template" to create
+your own Terraform module with automated publishing to Terraform Cloud's
+private registry.
+
 This repository demonstrates how to automatically publish Terraform modules to
 Terraform Cloud's private module registry using GitHub Actions.
+
+## 🎯 Quick Start for Template Users
+
+1. **Create from template**: Click "Use this template" button to create your repository
+2. **Rename repository**: Follow naming convention `terraform-<PROVIDER>-<NAME>`
+3. **Replace example module**: Delete the example VPC module files and add your own:
+   - `main.tf` - Your module's main configuration
+   - `variables.tf` - Input variables for your module
+   - `versions.tf` - Version constrains for terraform and providers
+   - `outputs.tf` - Output values from your module
+4. **Configure secrets**: Add `TFC_TOKEN` and `TFC_ORGANIZATION` to repository secrets
+5. **Test your module**: Run `terraform test` to validate your module
+6. **Publish**: Push a version tag like `v1.0.0` to automatically publish
 
 ## Overview
 
@@ -20,21 +37,29 @@ bypassing VCS integration.
 │       └── publish-terraform-module.yml # GitHub Actions workflow
 ├── .pre-commit-config.yaml            # Pre-commit configuration
 ├── .terraform-docs.yml                # terraform-docs configuration
-├── main.tf                           # Example Terraform module
-├── variables.tf                      # Module variables
-├── outputs.tf                       # Module outputs
-├── README.md                         # Module documentation
+├── main.tf                           # Example Terraform module (replace with yours)
+├── variables.tf                      # Module variables (replace with yours)  
+├── outputs.tf                       # Module outputs (replace with yours)
+├── tests/                           # Terraform native tests
+│   ├── unit_test.tftest.hcl         # Unit tests (plan only)
+│   ├── vpc_test.tftest.hcl          # VPC functionality tests
+│   ├── validation_test.tftest.hcl   # Input validation tests
+│   ├── integration_test.tftest.hcl  # Integration tests (apply)
+│   └── README.md                    # Testing documentation
+├── README.md                         # Module documentation (auto-generated)
 └── INSTRUCTIONS.md                   # Setup and usage instructions
 ```
 
 ## Prerequisites
 
-1. **Terraform Cloud Account**: You need access to a Terraform Cloud
+1. **Terraform >= 1.9.0**: Required for native testing framework and input
+   validation features
+2. **Terraform Cloud Account**: You need access to a Terraform Cloud
    organization
-2. **API Token**: Generate a user API token from Terraform Cloud
-3. **Repository Naming**: Follow the naming convention
+3. **API Token**: Generate a user API token from Terraform Cloud
+4. **Repository Naming**: Follow the naming convention
    `terraform-<PROVIDER>-<NAME>`
-4. **Pre-commit (Optional)**: For local development with automatic
+5. **Pre-commit (Optional)**: For local development with automatic
    documentation generation
 
 ## Setup Instructions
@@ -109,6 +134,7 @@ The repository includes Dependabot configuration to automatically:
 - Automatically assign you as a reviewer
 
 Dependabot will create PRs for:
+
 - terraform-docs version updates in GitHub Actions
 - pre-commit-terraform hook updates
 - Other GitHub Actions used in the workflow
@@ -141,7 +167,6 @@ You can also trigger the workflow manually:
 3. Click "Run workflow"
 4. Enter the version and optionally enable force publish
 
-
 ## Workflow Details
 
 The GitHub Actions workflow performs the following steps:
@@ -161,9 +186,92 @@ The GitHub Actions workflow performs the following steps:
 Your module should follow standard Terraform module conventions:
 
 - `main.tf` - Main configuration
-- `variables.tf` - Input variables
+- `variables.tf` - Input variables with comprehensive validation rules
 - `outputs.tf` - Output values
 - `README.md` - Documentation
+- `tests/` - Test cases using Terraform's native testing framework
+
+## Testing Your Module
+
+This template includes comprehensive test cases using Terraform's native testing
+framework. The tests are organized in the `tests/` directory:
+
+### Test Types
+
+- **Unit Tests** (`unit_test.tftest.hcl`) - Fast tests using `terraform plan`
+  - Validate default values and variable handling
+  - Test conditional logic and edge cases
+  - No AWS resources created
+
+- **Module Tests** (`vpc_test.tftest.hcl`) - Comprehensive module validation
+  - Test all module functionality with `terraform plan`
+  - Validate resource configuration and relationships
+  - No AWS resources created
+
+- **Integration Tests** (`integration_test.tftest.hcl`) - Real resource testing
+  - Create actual AWS resources with `terraform apply`
+  - Test resource functionality and connectivity
+  - **Note**: These tests incur AWS costs
+
+### Running Tests
+
+```bash
+# Run all tests
+terraform test
+
+# Run specific test file
+terraform test -filter=tests/unit_test.tftest.hcl
+
+# Run only plan-based tests (no resource creation)
+terraform test -filter=tests/unit_test.tftest.hcl
+terraform test -filter=tests/vpc_test.tftest.hcl
+```
+
+### Customizing Tests for Your Module
+
+When replacing the example VPC module with your own:
+
+1. Update test variables to match your module's inputs
+2. Modify assertions to validate your specific resources
+3. Add test cases for your module's unique functionality
+4. Consider both positive and negative test scenarios
+
+See `tests/README.md` for detailed testing documentation.
+
+## Input Validation
+
+This template includes comprehensive input validation using Terraform 1.9.0+
+features to ensure reliable and secure module usage:
+
+### Validation Rules Included
+
+- **Resource Names**: Validates naming conventions and length constraints
+- **CIDR Blocks**: Validates IPv4 CIDR notation and prefix ranges
+- **Subnet Lists**: Validates CIDR format and count limits
+- **Availability Zones**: Validates AWS AZ format and reasonable limits
+- **Tags**: Validates tag key/value length and prevents AWS reserved prefixes
+- **Cross-validation**: Ensures subnet counts match availability zone counts
+
+### Example Validation
+
+```hcl
+variable "name" {
+  validation {
+    condition = can(regex("^[a-zA-Z][a-zA-Z0-9-]*[a-zA-Z0-9]$", var.name))
+    error_message = "Name must start with a letter and contain only 
+                     alphanumeric characters and hyphens."
+  }
+}
+```
+
+### Customizing Validation for Your Module
+
+When adapting this template:
+
+1. Update validation rules to match your module's specific requirements
+2. Add domain-specific validation (e.g., port ranges, specific formats)
+3. Include cross-validation between related variables
+4. Test validation with both valid and invalid inputs
 
 ## Troubleshooting
 
