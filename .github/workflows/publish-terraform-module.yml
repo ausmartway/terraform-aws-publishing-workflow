@@ -83,7 +83,7 @@ jobs:
         echo "Version: $VERSION"
         
     - name: Install terraform-docs
-      uses: jaxxstorm/action-install-gh-release@v1.12.0
+      uses: jaxxstorm/action-install-gh-release@v2.1.0
       with:
         repo: terraform-docs/terraform-docs
         tag: v0.20.0
